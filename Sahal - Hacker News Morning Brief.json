@@ -1,0 +1,405 @@
+{
+  "name": "Sahal - Hacker News Morning Brief",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1824,
+        224
+      ],
+      "id": "10d4abdb-7753-4afd-8d8a-0e227fc3c7d8",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://hacker-news.firebaseio.com/v0/topstories.json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1568,
+        224
+      ],
+      "id": "0fadc70f-17d5-410b-82d5-a82beef949c2",
+      "name": "HN Top Stories",
+      "retryOnFail": true,
+      "waitBetweenTries": 1000,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst ids = items\n  .map(item => item.json)\n  .map(value => {\n    if (typeof value === 'number') return value;\n    if (value && typeof value === 'object') {\n      return value.id ?? value.storyId ?? value.data ?? null;\n    }\n    return null;\n  })\n  .filter(id => id !== null && id !== undefined);\n\nreturn ids.slice(0, 5).map((storyId, index) => ({\n  json: {\n    rank: index + 1,\n    storyId: Number(storyId)\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1296,
+        224
+      ],
+      "id": "ca9916ae-3b35-4d1c-ae35-d17f9162422d",
+      "name": "Select Top 5"
+    },
+    {
+      "parameters": {
+        "url": "=https://hacker-news.firebaseio.com/v0/item/{{$json.storyId}}.json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1040,
+        224
+      ],
+      "id": "e559b399-58b0-43c2-80f1-f949a8ded546",
+      "name": "HN Story Details",
+      "retryOnFail": true,
+      "waitBetweenTries": 1000,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map((item, index) => {\n  const j = item.json ?? {};\n  const id = j.id ?? j.storyId ?? null;\n  const apiOk = Number.isFinite(Number(j.score)) && id !== null;\n  return { json: {\n    rank: index + 1,\n    id,\n    title: j.title ?? '(untitled)',\n    score: Number(j.score ?? 0),\n    by: j.by ?? 'unknown',\n    url: j.url ?? (id ? `https://news.ycombinator.com/item?id=${id}` : null),\n    apiOk,\n    error: apiOk ? null : (j.error?.message ?? j.message ?? 'Story lookup failed')\n  }};\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        224
+      ],
+      "id": "e3b4bacd-bd4b-4d8a-8fec-494e907537ba",
+      "name": "Normalize + Validate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aa0e06ee-c36d-404d-9056-6c263a9b8dba",
+              "leftValue": "={{$json.apiOk}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -528,
+        224
+      ],
+      "id": "91c8cb58-6c79-406b-a33b-6535219115a2",
+      "name": "API OK?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "afab75b1-2340-48d3-930d-f9500ac803e2",
+              "leftValue": "={{$json.score}}",
+              "rightValue": 100,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -256,
+        112
+      ],
+      "id": "ce548079-df36-4729-a20c-e21d21727f02",
+      "name": "Score >= 100?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => ({ json: { ...item.json, priority: 'HIGH' } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1e2c833f-331b-494f-aa44-c95f430a61b1",
+      "name": "Mark HIGH"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => ({ json: { ...item.json, priority: 'NORMAL' } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ],
+      "id": "389ba180-3a5b-4030-a0c4-82de7759390a",
+      "name": "Mark NORMAL"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => ({ json: { ...item.json, priority: 'ERROR' } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        448
+      ],
+      "id": "5193cf88-2e6e-40a4-86b1-ea2fe7f89572",
+      "name": "Mark ERROR"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        272,
+        272
+      ],
+      "id": "2584c20e-ed8c-4cf4-8a1b-38d9326c6ef5",
+      "name": "Merge Results"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(item => item.json);\n\nconst ok = items\n  .filter(x => x.apiOk)\n  .sort((a, b) => b.score - a.score);\n\nconst errors = items.filter(x => !x.apiOk);\n\nconst lines = [];\n\nlines.push(\"📰 HACKER NEWS MORNING BRIEF\");\nlines.push(\"━━━━━━━━━━━━━━━━━━━━\");\nlines.push(\"🔥 HIGH priority: score ≥ 100\");\nlines.push(\"\");\n\nfor (const x of ok) {\n  const priority = x.priority || \"NORMAL\";\n\n  lines.push(\n    `${x.rank}. [${priority}] ${x.title}`\n  );\n\n  lines.push(\n    `   ⭐ ${x.score} points • by ${x.by}`\n  );\n\n  if (x.url) {\n    lines.push(`   🔗 ${x.url}`);\n  }\n\n  lines.push(\"\");\n}\n\nif (errors.length > 0) {\n  lines.push(\"⚠️ API ERRORS\");\n  lines.push(\"━━━━━━━━━━━━━━━━━━━━\");\n\n  for (const e of errors) {\n    lines.push(`• ${e.error || \"Unknown error\"}`);\n  }\n\n  lines.push(\"\");\n}\n\nlines.push(\"━━━━━━━━━━━━━━━━━━━━\");\nlines.push(`📊 Stories: ${ok.length}`);\nlines.push(`⚠️ Errors: ${errors.length}`);\nlines.push(`🕐 Generated: ${new Date().toLocaleString(\"en-IN\")}`);\n\nreturn [\n  {\n    json: {\n      digest: lines.join(\"\\n\"),\n      itemCount: ok.length,\n      errorCount: errors.length\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        272
+      ],
+      "id": "304920f2-442f-4d61-abee-16ef51a32296",
+      "name": "Build Digest"
+    },
+    {
+      "parameters": {
+        "chatId": "1258084761",
+        "text": "={{$json.digest}}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        768,
+        272
+      ],
+      "id": "65370883-cbbe-4a67-a973-3620e783e204",
+      "name": "Telegram - Send Digest",
+      "webhookId": "89eb8b8f-8e6d-4938-8c77-21c2cb6aec68",
+      "credentials": {
+        "telegramApi": {
+          "id": "yCPh1WEoGQtjnSTq",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HN Top Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HN Top Stories": {
+      "main": [
+        [
+          {
+            "node": "Select Top 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Top 5": {
+      "main": [
+        [
+          {
+            "node": "HN Story Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HN Story Details": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Validate": {
+      "main": [
+        [
+          {
+            "node": "API OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API OK?": {
+      "main": [
+        [
+          {
+            "node": "Score >= 100?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark ERROR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score >= 100?": {
+      "main": [
+        [
+          {
+            "node": "Mark HIGH",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark NORMAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark HIGH": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark NORMAL": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Mark ERROR": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Build Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "975b1371-2f70-4014-b2ac-58b32b8fd7f2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d47cc3cd22e69282961aca8074547a3c409c200e0b212815cce1485729142b9d"
+  },
+  "nodeGroups": [],
+  "id": "FfI5It1rvKhmKlyg",
+  "tags": []
+}
